@@ -2,6 +2,7 @@
 # Copyright (c) 2023 WOODcraft
 import os
 import re
+import shlex
 import subprocess
 import sys
 import traceback
@@ -156,57 +157,49 @@ async def shellrunner(_, message: Message):
     if len(message.command) < 2:
         return await edit_or_reply(message, text="<b>Usage :</b>\n/sh git pull")
     text = message.text.split(None, 1)[1]
-    if "\n" in text:
-        code = text.split("\n")
-        output = ""
-        for x in code:
-            shell = re.split(""" (?=(?:[^'"]|'[^']*'|"[^"]*")*$)""", x)
-            try:
-                process = subprocess.Popen(
-                    shell,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                )
-            except Exception as err:
-                await edit_or_reply(message, text=f"<b>ERROR :</b>\n<pre>{err}</pre>")
-            output += f"<b>{code}</b>\n"
-            output += process.stdout.read()[:-1].decode("utf-8")
-            output += "\n"
-    else:
-        shell = re.split(""" (?=(?:[^'"]|'[^']*'|"[^"]*")*$)""", text)
-        for a in range(len(shell)):
-            shell[a] = shell[a].replace('"', "")
+    
+    try:
+        # Use shlex for safe command splitting
+        shell = shlex.split(text)
+        process = subprocess.Popen(
+            shell,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        
         try:
-            process = subprocess.Popen(
-                shell,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-        except Exception as err:
-            print(err)
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            errors = traceback.format_exception(
-                etype=exc_type,
-                value=exc_obj,
-                tb=exc_tb,
-            )
-            return await edit_or_reply(
-                message, text=f"<b>ERROR :</b>\n<pre>{''.join(errors)}</pre>"
-            )
-        output = process.stdout.read()[:-1].decode("utf-8")
-    if str(output) == "\n":
-        output = None
-    if output:
-        if len(output) > 4096:
-            with open("output.txt", "w+") as file:
-                file.write(output)
-            await Opleech.send_document(
-                message.chat.id,
-                "output.txt",
-                reply_to_message_id=message.id,
-                caption="<code>Output</code>",
-            )
-            return os.remove("output.txt")
-        await edit_or_reply(message, text=f"<b>OUTPUT :</b>\n<pre>{output}</pre>")
+            # Add timeout to prevent hanging
+            output, error = process.communicate(timeout=30)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            output, error = process.communicate()
+            output = b""
+            error = b"Command timed out after 30 seconds."
+        
+        # Decode output safely
+        output_str = output.decode("utf-8", errors="replace")
+        error_str = error.decode("utf-8", errors="replace")
+        
+        if error_str:
+            output_str = f"STDERR: {error_str}\n\nSTDOUT: {output_str}"
+            
+    except Exception as err:
+        return await edit_or_reply(
+            message, text=f"<b>ERROR :</b>\n<pre>{str(err)}</pre>"
+        )
+    
+    if not output_str or output_str.strip() == "":
+        output_str = "Command executed successfully with no output."
+    
+    if len(output_str) > 4096:
+        with open("output.txt", "w+", encoding="utf-8") as file:
+            file.write(output_str)
+        await Opleech.send_document(
+            message.chat.id,
+            "output.txt",
+            reply_to_message_id=message.id,
+            caption="<code>Output</code>",
+        )
+        os.remove("output.txt")
     else:
-        await edit_or_reply(message, text="<b>OUTPUT :</b>\n<code>None</code>")
+        await edit_or_reply(message, text=f"<b>OUTPUT :</b>\n<pre>{output_str}</pre>")
