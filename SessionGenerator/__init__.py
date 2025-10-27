@@ -37,10 +37,11 @@ class Opleech(Client):
 
     async def start(self):
         await super().start()
-        self.id = self.me.id
-        self.name = self.me.first_name + " " + (self.me.last_name or "")
-        self.username = self.me.username
-        self.mention = self.me.mention
+        me = await self.get_me()
+        self.id = me.id
+        self.name = me.first_name + " " + (me.last_name or "")
+        self.username = me.username
+        self.mention = me.mention
 
     async def stop(self):
         await super().stop()

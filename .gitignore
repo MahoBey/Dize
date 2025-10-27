@@ -3,3 +3,5 @@ __pycache__/
 .gitattributes
 *.pyc
 .env
+downloads/
+*.log
